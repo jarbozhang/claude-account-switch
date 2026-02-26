@@ -40,18 +40,17 @@ async function inputEmail(page, email) {
   await page.goto(LOGIN_URL, { waitUntil: 'load' });
   await page.waitForTimeout(1500);
 
-  // 填入邮箱（React 兼容方式）
+  // 填入邮箱：用 execCommand 模拟真实输入，兼容 React 受控组件
   await page.evaluate((emailVal) => {
     const input = document.querySelector('input[type="email"], input[name="email"]')
       || document.querySelector('input[type="text"]')
       || Array.from(document.querySelectorAll('input'))
            .find(el => el.type !== 'file' && el.type !== 'hidden' && el.type !== 'checkbox');
     if (!input) throw new Error('未找到邮箱输入框');
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
-    if (setter && setter.set) setter.set.call(input, emailVal);
-    else input.value = emailVal;
+    input.focus();
+    input.value = '';
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
+    document.execCommand('insertText', false, emailVal);
   }, email);
 
   await page.waitForTimeout(500);
@@ -151,15 +150,15 @@ async function claudeCodeLogin() {
 }
 
 /**
- * 检查当前账号的 Current session 使用百分比
+ * 检查当前账号的 usage 百分比
  * 复用已有 claude.ai 标签页：用 set URL 导航（不触发 Chrome 激活），读完导回原 URL
- * @returns {Promise<number>} 0-100 的整数，获取失败返回 -1
+ * @returns {Promise<{session: number, weekly: number}>} 0-100 的整数，获取失败返回 -1
  */
 async function checkUsage() {
   const claudePage = findClaudeTab();
   if (!claudePage) {
     console.warn('⚠️  未找到 claude.ai 标签页，请保持 Claude 在 Chrome 中打开');
-    return -1;
+    return { session: -1, weekly: -1 };
   }
 
   const originalUrl = claudePage.url();
@@ -170,18 +169,25 @@ async function checkUsage() {
     await claudePage.goto('https://claude.ai/settings/usage', { waitUntil: 'load' });
     await claudePage.waitForTimeout(2000);
 
-    const pct = await claudePage.evaluate(() => {
+    const usage = await claudePage.evaluate(() => {
+      const result = { session: null, weekly: null };
       for (const section of document.querySelectorAll('section')) {
-        if (!section.innerText.includes('Current session')) continue;
+        const text = section.innerText;
         for (const p of section.querySelectorAll('p')) {
           const m = p.innerText.match(/^(\d{1,3})%\s*used$/);
-          if (m) return parseInt(m[1], 10);
+          if (!m) continue;
+          const pct = parseInt(m[1], 10);
+          if (text.includes('Current session')) result.session = pct;
+          if (text.includes('Weekly limit')) result.weekly = pct;
         }
       }
-      return null;
+      return result;
     });
 
-    return pct ?? -1;
+    return {
+      session: usage.session ?? -1,
+      weekly: usage.weekly ?? -1,
+    };
   } finally {
     // 导回原页面
     if (originalUrl && !originalUrl.includes('/settings/usage')) {

@@ -41,6 +41,20 @@ function getNextAccount(currentEmail = null) {
   return available[0];
 }
 
+/**
+ * 按邮箱查找指定账号（不跳过 exhausted）
+ * @param {string} email
+ */
+function getAccountByEmail(email) {
+  const config = loadConfig();
+  const account = config.accounts.find(a => a.email.toLowerCase() === email.toLowerCase());
+  if (!account) {
+    console.error(`❌ 未找到账号：${email}`);
+    process.exit(1);
+  }
+  return account;
+}
+
 function markAccountUsed(email) {
   const config = loadConfig();
   const account = config.accounts.find(a => a.email === email);
@@ -64,4 +78,4 @@ function getConfig() {
   return loadConfig();
 }
 
-module.exports = { getNextAccount, markAccountUsed, markAccountExhausted, getConfig };
+module.exports = { getNextAccount, getAccountByEmail, markAccountUsed, markAccountExhausted, getConfig };

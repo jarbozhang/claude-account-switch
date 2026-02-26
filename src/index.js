@@ -1,38 +1,46 @@
 'use strict';
 
 const { openChrome } = require('./browser');
-const { getNextAccount, markAccountUsed } = require('./accounts');
+const { getNextAccount, getAccountByEmail, markAccountUsed } = require('./accounts');
 const { getCurrentEmail, checkUsage, logout, inputEmail, claudeCodeLogin } = require('./claude');
 const { fetchVerifyLink } = require('./mail');
 
 const THRESHOLD = 50;
 
 async function main() {
+  const targetEmail = process.argv[2] || null;
+
   console.log('🔄 Claude 账号切换工具');
   console.log('────────────────────────');
 
-  // 1. 静默检查当前 usage（复用已有 Claude 标签，不抢焦点）
-  const pct = await checkUsage();
-  if (pct !== -1) {
-    console.log(`📊 Current session: ${pct}%`);
-    if (pct < THRESHOLD) {
-      console.log(`✋ 尚未达到 ${THRESHOLD}% 阈值，无需切换`);
-      return;
-    }
-    console.log(`🚨 已达到 ${THRESHOLD}%，继续切换...`);
-  }
-
-  // 2. 连接已有 Chrome
+  // 1. 连接已有 Chrome
   const { context } = await openChrome();
   console.log('🌐 已连接 Chrome');
 
   const page = await context.newPage();
 
-  // 2. 获取当前登录邮箱，排除自身后选取下一个账号
-  const currentEmail = await getCurrentEmail(page);
-  if (currentEmail) console.log(`👤 当前账号：${currentEmail}`);
-  const account = getNextAccount(currentEmail);
-  console.log(`📋 切换到账号：${account.email}`);
+  // 2. 选取目标账号
+  let account;
+  if (targetEmail) {
+    account = getAccountByEmail(targetEmail);
+    console.log(`🎯 指定切换到：${account.email}`);
+  } else {
+    // 静默检查当前 usage
+    const { session } = await checkUsage();
+    if (session !== -1) {
+      console.log(`📊 Current session: ${session}%`);
+      if (session < THRESHOLD) {
+        console.log(`✋ 尚未达到 ${THRESHOLD}% 阈值，无需切换`);
+        await page.close().catch(() => {});
+        return;
+      }
+      console.log(`🚨 已达到 ${THRESHOLD}%，继续切换...`);
+    }
+    const currentEmail = await getCurrentEmail(page);
+    if (currentEmail) console.log(`👤 当前账号：${currentEmail}`);
+    account = getNextAccount(currentEmail);
+    console.log(`📋 切换到账号：${account.email}`);
+  }
 
   try {
     // 3. 登出当前账号
