@@ -55,10 +55,8 @@ let switching = false;
 
 async function check(context) {
   if (switching) return;
-  let usagePage;
   try {
-    usagePage = await context.newPage();
-    const pct = await checkUsage(usagePage);
+    const pct = await checkUsage();
     if (pct === -1) {
       console.log(`[${ts()}] ⚠️  无法读取 usage，跳过`);
       return;
@@ -71,8 +69,6 @@ async function check(context) {
     }
   } catch (err) {
     console.error(`[${ts()}] ❌ 检查出错：`, err.message);
-  } finally {
-    if (usagePage) await usagePage.close().catch(() => {});
   }
 }
 

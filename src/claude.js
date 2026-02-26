@@ -1,6 +1,6 @@
 'use strict';
 
-const { waitForAuthorizeTab } = require('./browser');
+const { waitForAuthorizeTab, findClaudeTab } = require('./browser');
 
 const CLAUDE_URL = 'https://claude.ai';
 const LOGIN_URL = 'https://claude.ai/login';
@@ -26,38 +26,8 @@ async function getCurrentEmail(page) {
  */
 async function logout(page) {
   console.log('🚪 登出当前账号...');
-  await page.goto(CLAUDE_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(2000);
-
-  // 方案A：通过 JS 找到菜单触发按钮并点击
-  const opened = await page.evaluate(() => {
-    // 尝试常见的用户菜单触发器
-    const selectors = [
-      '[data-testid="user-menu-trigger"]',
-      '[aria-label*="menu" i]',
-      '[aria-label*="account" i]',
-    ];
-    for (const sel of selectors) {
-      const el = document.querySelector(sel);
-      if (el) { el.click(); return true; }
-    }
-    return false;
-  });
-
-  if (!opened) {
-    // 方案B：直接访问登出端点
-    await page.goto(`${CLAUDE_URL}/logout`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-  }
-
-  // 等菜单展开后找 Log out 条目
-  await page.waitForTimeout(800);
-  await page.evaluate(() => {
-    const items = Array.from(document.querySelectorAll('button, a, [role="menuitem"]'));
-    const logoutEl = items.find(el => /log out/i.test(el.innerText));
-    if (logoutEl) logoutEl.click();
-  });
-
-  await page.waitForTimeout(2000);
+  await page.goto(`${CLAUDE_URL}/logout`, { waitUntil: 'load' });
+  await page.waitForTimeout(1500);
   console.log('✅ 已登出');
 }
 
@@ -123,30 +93,40 @@ async function autoAuthorize() {
 
 /**
  * 检查当前账号的 Current session 使用百分比
- * 页面结构：<section> 包含 "Current session" 文字和 "XX% used" 文字
- * @param {import('./browser').ChromePage} page
+ * 复用已有 claude.ai 标签页：用 set URL 导航（不触发 Chrome 激活），读完导回原 URL
  * @returns {Promise<number>} 0-100 的整数，获取失败返回 -1
  */
-async function checkUsage(page) {
-  await page.goto('https://claude.ai/settings/usage', { waitUntil: 'load' });
-  await page.waitForTimeout(2000);
+async function checkUsage() {
+  const claudePage = findClaudeTab();
+  if (!claudePage) {
+    console.warn('⚠️  未找到 claude.ai 标签页，请保持 Claude 在 Chrome 中打开');
+    return -1;
+  }
 
-  const pct = await page.evaluate(() => {
-    for (const section of document.querySelectorAll('section')) {
-      if (!section.innerText.includes('Current session')) continue;
-      for (const p of section.querySelectorAll('p')) {
-        const m = p.innerText.match(/^(\d{1,3})%\s*used$/);
-        if (m) return parseInt(m[1], 10);
+  const originalUrl = claudePage.url();
+
+  try {
+    await claudePage.goto('https://claude.ai/settings/usage', { waitUntil: 'load', silent: true });
+    await claudePage.waitForTimeout(2000);
+
+    const pct = await claudePage.evaluate(() => {
+      for (const section of document.querySelectorAll('section')) {
+        if (!section.innerText.includes('Current session')) continue;
+        for (const p of section.querySelectorAll('p')) {
+          const m = p.innerText.match(/^(\d{1,3})%\s*used$/);
+          if (m) return parseInt(m[1], 10);
+        }
       }
+      return null;
+    });
+
+    return pct ?? -1;
+  } finally {
+    // 导回原页面
+    if (originalUrl && !originalUrl.includes('/settings/usage')) {
+      await claudePage.goto(originalUrl, { waitUntil: 'domcontentloaded', silent: true }).catch(() => {});
     }
-    return null;
-  });
-
-  if (pct !== null) return pct;
-
-  const pageText = await page.evaluate(() => document.body.innerText.slice(0, 800));
-  console.warn('⚠️  无法读取 usage，页面文本：\n' + pageText);
-  return -1;
+  }
 }
 
 module.exports = { getCurrentEmail, logout, inputEmail, autoAuthorize, checkUsage };

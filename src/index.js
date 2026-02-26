@@ -2,14 +2,27 @@
 
 const { openChrome } = require('./browser');
 const { getNextAccount, markAccountUsed } = require('./accounts');
-const { getCurrentEmail, logout, inputEmail, autoAuthorize } = require('./claude');
+const { getCurrentEmail, checkUsage, logout, inputEmail, autoAuthorize } = require('./claude');
 const { fetchVerifyLink } = require('./mail');
+
+const THRESHOLD = 50;
 
 async function main() {
   console.log('🔄 Claude 账号切换工具');
   console.log('────────────────────────');
 
-  // 1. 连接已有 Chrome
+  // 1. 静默检查当前 usage（复用已有 Claude 标签，不抢焦点）
+  const pct = await checkUsage();
+  if (pct !== -1) {
+    console.log(`📊 Current session: ${pct}%`);
+    if (pct < THRESHOLD) {
+      console.log(`✋ 尚未达到 ${THRESHOLD}% 阈值，无需切换`);
+      return;
+    }
+    console.log(`🚨 已达到 ${THRESHOLD}%，继续切换...`);
+  }
+
+  // 2. 连接已有 Chrome
   const { context } = await openChrome();
   console.log('🌐 已连接 Chrome');
 

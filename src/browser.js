@@ -40,8 +40,24 @@ class ChromePage {
     this._idx = tabIndex; // Chrome 1-based tab index
   }
 
-  async goto(url, { waitUntil = 'load' } = {}) {
+  async goto(url, { waitUntil = 'load', silent = false } = {}) {
+    // silent=true：导航前记录当前焦点，set URL 后立刻还回去
+    let prevApp = null;
+    if (silent) {
+      try {
+        prevApp = runAS('tell application "System Events"\n  return name of first application process whose frontmost is true\nend tell');
+      } catch (_) {}
+    }
+
     runAS(`tell application "Google Chrome"\n  set URL of tab ${this._idx} of front window to "${escJS(url)}"\nend tell`);
+
+    if (silent && prevApp && !/chrome/i.test(prevApp)) {
+      // 用进程名直接设置 frontmost，避免 tell application 找不到 bundle 名报错
+      try {
+        runAS(`tell application "System Events"\n  set frontmost of process "${prevApp.replace(/"/g, '\\"')}" to true\nend tell`);
+      } catch (_) {}
+    }
+
     await sleep(waitUntil === 'domcontentloaded' ? 1500 : 2500);
   }
 
@@ -118,7 +134,7 @@ async function openChrome() {
       // 立刻把焦点还给之前的 App（Terminal / iTerm 等）
       if (prevApp && !/chrome/i.test(prevApp)) {
         try {
-          runAS(`tell application "${prevApp.replace(/"/g, '\\"')}" to activate`);
+          runAS(`tell application "System Events"\n  set frontmost of process "${prevApp.replace(/"/g, '\\"')}" to true\nend tell`);
         } catch (_) {}
       }
 
@@ -162,4 +178,28 @@ async function waitForAuthorizeTab(timeout = 120000) {
   throw new Error('等待 Authorize 页面超时（2分钟），请手动操作');
 }
 
-module.exports = { openChrome, waitForAuthorizeTab };
+/**
+ * 在已有 Chrome 标签页中查找任意 claude.ai 页面，不抢焦点
+ * 找到则返回 ChromePage，否则返回 null
+ */
+function findClaudeTab() {
+  try {
+    const result = runAS(`
+tell application "Google Chrome"
+  set tabCount to count tabs of front window
+  repeat with i from 1 to tabCount
+    set tabURL to URL of tab i of front window
+    if tabURL contains "claude.ai" then
+      return i as string
+    end if
+  end repeat
+  return "0"
+end tell`);
+    const idx = parseInt(result);
+    return idx > 0 ? new ChromePage(idx) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+module.exports = { openChrome, waitForAuthorizeTab, findClaudeTab };
