@@ -110,6 +110,16 @@ function barColor(pct) {
   return 'red';
 }
 
+function translateResetTime(s) {
+  if (!s) return null;
+  const days = { Mon:'周一', Tue:'周二', Wed:'周三', Thu:'周四', Fri:'周五', Sat:'周六', Sun:'周日' };
+  return s.replace(/^Resets\s+(\w+)\s+(\d+:\d+)\s*(AM|PM)?/i, (_, day, time, ampm) => {
+    const d = days[day] || day;
+    const period = ampm ? (ampm.toUpperCase() === 'AM' ? '上午' : '下午') : '';
+    return \`下次重置：\${d} \${period}\${time}\`;
+  });
+}
+
 function relTime(ts) {
   if (!ts) return '从未检查';
   const diff = Math.floor((Date.now() - ts) / 1000);
@@ -147,7 +157,7 @@ function renderCards(accounts) {
       \${a.user ? \`<div class="username">\${a.user}</div>\` : ''}
       \${renderBar('Current Session', a.usageSession)}
       \${renderBar('Weekly Limit', a.usageWeekly)}
-      \${a.weeklyResetsAt ? \`<div class="resets-at">🔄 \${a.weeklyResetsAt}</div>\` : ''}
+      \${a.weeklyResetsAt ? \`<div class="resets-at">🔄 \${translateResetTime(a.weeklyResetsAt)}</div>\` : ''}
       <div class="checked-at">上次检查：\${relTime(a.usageCheckedAt)}</div>
     </div>\`;
   }).join('');
