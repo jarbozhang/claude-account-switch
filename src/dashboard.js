@@ -20,6 +20,7 @@ function apiStatus() {
     usageSession: a.usageSession ?? null,
     usageWeekly: a.usageWeekly ?? null,
     usageCheckedAt: a.usageCheckedAt || null,
+    weeklyResetsAt: a.weeklyResetsAt || null,
   }));
   return { accounts };
 }
@@ -74,7 +75,8 @@ function renderDashboard() {
   .green { background: #22c55e; }
   .yellow { background: #eab308; }
   .red { background: #ef4444; }
-  .checked-at { font-size: 0.72rem; color: #475569; margin-top: 10px; }
+  .resets-at { font-size: 0.75rem; color: #64748b; margin-top: 8px; }
+  .checked-at { font-size: 0.72rem; color: #475569; margin-top: 4px; }
 
   /* 历史面板 */
   #history-panel { display: none; position: fixed; top: 0; right: 0; bottom: 0; width: 420px; background: #1e293b; padding: 24px; overflow-y: auto; z-index: 100; box-shadow: -4px 0 24px rgba(0,0,0,0.5); }
@@ -145,6 +147,7 @@ function renderCards(accounts) {
       \${a.user ? \`<div class="username">\${a.user}</div>\` : ''}
       \${renderBar('Current Session', a.usageSession)}
       \${renderBar('Weekly Limit', a.usageWeekly)}
+      \${a.weeklyResetsAt ? \`<div class="resets-at">🔄 \${a.weeklyResetsAt}</div>\` : ''}
       <div class="checked-at">上次检查：\${relTime(a.usageCheckedAt)}</div>
     </div>\`;
   }).join('');

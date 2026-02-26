@@ -41,22 +41,26 @@ async function checkAccount(browser, account) {
 
     // 6. DOM 解析
     const usage = await page.evaluate(() => {
-      const result = { session: null, weekly: null };
+      const result = { session: null, weekly: null, weeklyResetsAt: null };
       let mode = null;
       for (const p of document.querySelectorAll('p')) {
         const text = p.innerText.trim();
         if (text === 'Current session') { mode = 'session'; continue; }
         if (text.includes('Weekly') || text === 'All models') { mode = 'weekly'; continue; }
+        if (mode === 'weekly' && text.startsWith('Resets ')) {
+          result.weeklyResetsAt = text; // e.g. "Resets Wed 8:00 AM"
+          continue;
+        }
         const m = text.match(/^(\d{1,3})%\s*used$/);
         if (m && mode) { result[mode] = parseInt(m[1], 10); mode = null; }
       }
       return result;
     });
 
-    console.log(`[${account.email}] ✅ session=${usage.session ?? '?'}% weekly=${usage.weekly ?? '?'}%`);
+    console.log(`[${account.email}] ✅ session=${usage.session ?? '?'}% weekly=${usage.weekly ?? '?'}% resets=${usage.weeklyResetsAt ?? '?'}`);
 
     // 7. 写 config.json（含历史记录）
-    saveAccountUsage(account.email, usage.session, usage.weekly);
+    saveAccountUsage(account.email, usage.session, usage.weekly, usage.weeklyResetsAt);
 
     // 8. 登出，准备下一个账号
     await logout(page);
