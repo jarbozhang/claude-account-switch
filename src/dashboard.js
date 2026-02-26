@@ -14,6 +14,7 @@ function apiStatus() {
   const config = getConfig();
   const accounts = config.accounts.map(a => ({
     email: a.email,
+    user: a.user || null,
     exhausted: !!a.exhausted,
     lastUsed: a.lastUsed || null,
     usageSession: a.usageSession ?? null,
@@ -64,7 +65,8 @@ function renderDashboard() {
   .card.current { border-color: #3b82f6; }
   .badge { position: absolute; top: 12px; right: 12px; background: #3b82f6; color: #fff; font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
   .badge.exhausted-badge { background: #475569; }
-  .email { font-size: 0.95rem; font-weight: 600; margin-bottom: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .email { font-size: 0.95rem; font-weight: 600; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .username { font-size: 0.8rem; color: #94a3b8; margin-bottom: 12px; }
   .metric { margin-bottom: 10px; }
   .metric-label { font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px; display: flex; justify-content: space-between; }
   .bar-bg { background: #334155; border-radius: 999px; height: 8px; overflow: hidden; }
@@ -140,6 +142,7 @@ function renderCards(accounts) {
     return \`<div class="\${classes}" onclick="showHistory('\${a.email}')">
       \${badge}
       <div class="email" title="\${a.email}">\${a.email}</div>
+      \${a.user ? \`<div class="username">\${a.user}</div>\` : ''}
       \${renderBar('Current Session', a.usageSession)}
       \${renderBar('Weekly Limit', a.usageWeekly)}
       <div class="checked-at">上次检查：\${relTime(a.usageCheckedAt)}</div>
