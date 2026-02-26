@@ -2,7 +2,7 @@
 
 const { openChrome } = require('./browser');
 const { getNextAccount, markAccountUsed } = require('./accounts');
-const { getCurrentEmail, checkUsage, logout, inputEmail, autoAuthorize } = require('./claude');
+const { getCurrentEmail, checkUsage, logout, inputEmail, claudeCodeLogin } = require('./claude');
 const { fetchVerifyLink } = require('./mail');
 
 const THRESHOLD = 50;
@@ -55,15 +55,12 @@ async function main() {
     // 7. 记录使用时间
     markAccountUsed(account.email);
 
-    // 8. 等待并自动点击 Authorize（内含提示用户执行 /login 的输出）
-    await autoAuthorize();
+    // 8. 自动完成 Claude Code OAuth 登录
+    await claudeCodeLogin();
 
     // 9. 完成
     console.log('');
-    console.log('────────────────────────');
     console.log('🎉 账号切换完成！');
-    console.log('   请回到 Claude Code 按回车确认完成登录');
-    console.log('────────────────────────');
 
   } catch (err) {
     console.error('❌ 出错：', err.message);

@@ -36,12 +36,20 @@ function getTabCount() {
 }
 
 class ChromePage {
-  constructor(tabIndex) {
-    this._idx = tabIndex; // Chrome 1-based tab index
+  /**
+   * @param {number} tabIndex  Chrome 1-based tab index
+   * @param {number} [winIndex]  Chrome 1-based window index，省略则用 front window
+   */
+  constructor(tabIndex, winIndex) {
+    this._idx = tabIndex;
+    this._win = winIndex; // undefined = front window
+  }
+
+  _winRef() {
+    return this._win ? `window ${this._win}` : 'front window';
   }
 
   async goto(url, { waitUntil = 'load', silent = false } = {}) {
-    // silent=true：导航前记录当前焦点，set URL 后立刻还回去
     let prevApp = null;
     if (silent) {
       try {
@@ -49,10 +57,9 @@ class ChromePage {
       } catch (_) {}
     }
 
-    runAS(`tell application "Google Chrome"\n  set URL of tab ${this._idx} of front window to "${escJS(url)}"\nend tell`);
+    runAS(`tell application "Google Chrome"\n  set URL of tab ${this._idx} of ${this._winRef()} to "${escJS(url)}"\nend tell`);
 
     if (silent && prevApp && !/chrome/i.test(prevApp)) {
-      // 用进程名直接设置 frontmost，避免 tell application 找不到 bundle 名报错
       try {
         runAS(`tell application "System Events"\n  set frontmost of process "${prevApp.replace(/"/g, '\\"')}" to true\nend tell`);
       } catch (_) {}
@@ -74,7 +81,7 @@ class ChromePage {
     }
     const wrapped = `(function(){try{return JSON.stringify(${jsCode});}catch(e){return JSON.stringify({__err:e.message});}})()`;
     const raw = runAS(
-      `tell application "Google Chrome"\n  set r to execute tab ${this._idx} of front window javascript "${escJS(wrapped)}"\n  return r\nend tell`
+      `tell application "Google Chrome"\n  set r to execute tab ${this._idx} of ${this._winRef()} javascript "${escJS(wrapped)}"\n  return r\nend tell`
     );
     let parsed;
     try { parsed = JSON.parse(raw); } catch (_) { return raw; }
@@ -96,13 +103,13 @@ class ChromePage {
 
   url() {
     return runAS(
-      `tell application "Google Chrome"\n  return URL of tab ${this._idx} of front window\nend tell`
+      `tell application "Google Chrome"\n  return URL of tab ${this._idx} of ${this._winRef()}\nend tell`
     );
   }
 
   async close() {
     try {
-      runAS(`tell application "Google Chrome"\n  close tab ${this._idx} of front window\nend tell`);
+      runAS(`tell application "Google Chrome"\n  close tab ${this._idx} of ${this._winRef()}\nend tell`);
     } catch (_) {}
   }
 }
@@ -179,27 +186,45 @@ async function waitForAuthorizeTab(timeout = 120000) {
 }
 
 /**
- * 在已有 Chrome 标签页中查找任意 claude.ai 页面，不抢焦点
- * 找到则返回 ChromePage，否则返回 null
+ * 在 Chrome 所有窗口中查找任意 claude.ai 页面，不抢焦点
+ * 找到则返回 ChromePage（带 window index），否则返回 null
  */
 function findClaudeTab() {
   try {
     const result = runAS(`
 tell application "Google Chrome"
-  set tabCount to count tabs of front window
-  repeat with i from 1 to tabCount
-    set tabURL to URL of tab i of front window
-    if tabURL contains "claude.ai" then
-      return i as string
-    end if
+  set winCount to count windows
+  repeat with w from 1 to winCount
+    set tabCount to count tabs of window w
+    repeat with i from 1 to tabCount
+      set tabURL to URL of tab i of window w
+      if tabURL contains "claude.ai" then
+        return (w as string) & "," & (i as string)
+      end if
+    end repeat
   end repeat
-  return "0"
+  return "0,0"
 end tell`);
-    const idx = parseInt(result);
-    return idx > 0 ? new ChromePage(idx) : null;
+    const [winIdx, tabIdx] = result.split(',').map(Number);
+    return tabIdx > 0 ? new ChromePage(tabIdx, winIdx) : null;
   } catch (_) {
     return null;
   }
 }
 
-module.exports = { openChrome, waitForAuthorizeTab, findClaudeTab };
+/** 获取当前前台 App 名称 */
+function saveFrontApp() {
+  try {
+    return runAS('tell application "System Events"\n  return name of first application process whose frontmost is true\nend tell');
+  } catch (_) { return null; }
+}
+
+/** 恢复前台 App（跳过 Chrome） */
+function restoreFrontApp(appName) {
+  if (!appName || /chrome/i.test(appName)) return;
+  try {
+    runAS(`tell application "System Events"\n  set frontmost of process "${appName.replace(/"/g, '\\"')}" to true\nend tell`);
+  } catch (_) {}
+}
+
+module.exports = { openChrome, waitForAuthorizeTab, findClaudeTab, saveFrontApp, restoreFrontApp };

@@ -1,7 +1,7 @@
 'use strict';
 
 const { openChrome } = require('./browser');
-const { getCurrentEmail, checkUsage, logout, inputEmail, autoAuthorize } = require('./claude');
+const { getCurrentEmail, checkUsage, logout, inputEmail, claudeCodeLogin } = require('./claude');
 const { getNextAccount, markAccountUsed } = require('./accounts');
 const { fetchVerifyLink } = require('./mail');
 
@@ -29,9 +29,9 @@ async function runSwitch(context) {
 
     markAccountUsed(account.email);
 
-    await autoAuthorize();
+    await claudeCodeLogin();
 
-    console.log('\n🎉 账号切换完成！请回到 Claude Code 按回车确认');
+    console.log('\n🎉 账号切换完成！');
     console.log('🔁 继续监控新账号的 usage...\n');
   } finally {
     await page.close().catch(() => {});
