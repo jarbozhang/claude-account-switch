@@ -1,0 +1,17 @@
+{
+  "cdpUrl": "http://localhost:9222",
+  "accounts": [
+    {
+      "email": "account1@example.com",
+      "token": "your-171mail-token-here",
+      "lastUsed": null,
+      "exhausted": false
+    },
+    {
+      "email": "account2@example.com",
+      "token": "your-171mail-token-here",
+      "lastUsed": null,
+      "exhausted": false
+    }
+  ]
+}

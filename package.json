@@ -1,0 +1,10 @@
+{
+  "name": "claude-account-switch",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "switch": "node src/index.js",
+    "monitor": "node src/monitor.js"
+  }
+}
