@@ -1,6 +1,9 @@
 node_modules/
 chrome-data/
 .claude/
+cookies/
+scraper-profile/
+.trigger
 
 # 账号配置（含邮箱和接码令牌，禁止提交）
 config.json

@@ -1,0 +1,17 @@
+services:
+  scraper:
+    build: .
+    volumes:
+      - ./config.json:/app/config.json
+    restart: unless-stopped
+    environment:
+      - SCRAPER_INTERVAL_MS=600000   # 10 分钟
+
+  dashboard:
+    build: .
+    command: node src/dashboard.js
+    ports:
+      - "3399:3399"
+    volumes:
+      - ./config.json:/app/config.json
+    restart: unless-stopped

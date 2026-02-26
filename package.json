@@ -5,6 +5,11 @@
   "type": "commonjs",
   "scripts": {
     "switch": "node src/index.js",
-    "monitor": "node src/monitor.js"
+    "monitor": "node src/monitor.js",
+    "scraper": "node src/scraper.js",
+    "dashboard": "node src/dashboard.js"
+  },
+  "dependencies": {
+    "playwright": "1.50.0"
   }
 }

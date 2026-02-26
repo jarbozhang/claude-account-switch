@@ -78,4 +78,23 @@ function getConfig() {
   return loadConfig();
 }
 
-module.exports = { getNextAccount, getAccountByEmail, markAccountUsed, markAccountExhausted, getConfig };
+function saveAccountUsage(email, session, weekly) {
+  const config = loadConfig();
+  const account = config.accounts.find(a => a.email === email);
+  if (!account) return;
+
+  account.usageSession = session;
+  account.usageWeekly = weekly;
+  account.usageCheckedAt = Date.now();
+
+  // 追加历史记录（最多保留 200 条 ≈ 33 小时）
+  if (!account.usageHistory) account.usageHistory = [];
+  account.usageHistory.push({ session, weekly, at: Date.now() });
+  if (account.usageHistory.length > 200) {
+    account.usageHistory = account.usageHistory.slice(-200);
+  }
+
+  saveConfig(config);
+}
+
+module.exports = { getNextAccount, getAccountByEmail, markAccountUsed, markAccountExhausted, getConfig, saveAccountUsage };
