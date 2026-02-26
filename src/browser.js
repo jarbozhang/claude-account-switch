@@ -187,7 +187,8 @@ async function waitForAuthorizeTab(timeout = 120000) {
 
 /**
  * 在 Chrome 所有窗口中查找任意 claude.ai 页面，不抢焦点
- * 找到则返回 ChromePage（带 window index），否则返回 null
+ * 找不到则在后台新建一个 claude.ai 标签页
+ * @returns {ChromePage}
  */
 function findClaudeTab() {
   try {
@@ -206,7 +207,18 @@ tell application "Google Chrome"
   return "0,0"
 end tell`);
     const [winIdx, tabIdx] = result.split(',').map(Number);
-    return tabIdx > 0 ? new ChromePage(tabIdx, winIdx) : null;
+    if (tabIdx > 0) return new ChromePage(tabIdx, winIdx);
+  } catch (_) {}
+
+  // 没找到，后台新建一个 claude.ai 标签页
+  try {
+    runAS(`tell application "Google Chrome"
+  tell front window
+    make new tab with properties {URL:"https://claude.ai"}
+  end tell
+end tell`);
+    const count = getTabCount();
+    return new ChromePage(count);
   } catch (_) {
     return null;
   }
