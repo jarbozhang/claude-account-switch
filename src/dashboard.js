@@ -113,7 +113,7 @@ function barColor(pct) {
 function translateResetTime(s) {
   if (!s) return null;
   const days = { Mon:'周一', Tue:'周二', Wed:'周三', Thu:'周四', Fri:'周五', Sat:'周六', Sun:'周日' };
-  return s.replace(/^Resets\s+(\w+)\s+(\d+:\d+)\s*(AM|PM)?/i, (_, day, time, ampm) => {
+  return s.replace(/^Resets\\s+(\\w+)\\s+(\\d+:\\d+)\\s*(AM|PM)?/i, (_, day, time, ampm) => {
     const d = days[day] || day;
     const period = ampm ? (ampm.toUpperCase() === 'AM' ? '上午' : '下午') : '';
     return \`下次重置：\${d} \${period}\${time}\`;
