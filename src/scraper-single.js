@@ -82,9 +82,19 @@ function clearAttempts() {
 
 async function doLogin(browser, page) {
   const attempts = readAttempts();
-  if (attempts >= 10) {
-    console.error(`[${ts()}][${email}] ⛔ 已连续登录失败 10 次，放弃重试`);
-    process.exit(0);
+  if (attempts >= 3) {
+    console.error(`[${ts()}][${email}] ⛔ 已连续登录失败 3 次，等待手动触发重试...`);
+    // 轮询等待 retry 触发文件
+    const retryFile = path.join(DATA_DIR, 'triggers', emailSafe + '.retry');
+    while (true) {
+      await new Promise(r => setTimeout(r, 5000));
+      if (fs.existsSync(retryFile)) {
+        try { fs.unlinkSync(retryFile); } catch (_) {}
+        clearAttempts();
+        console.log(`[${ts()}][${email}] 🔄 收到重试信号，重新登录...`);
+        break;
+      }
+    }
   }
   console.log(`[${ts()}][${email}] 🔐 执行登录流程（第 ${attempts + 1} 次尝试）...`);
   try {
@@ -111,6 +121,12 @@ async function doLogin(browser, page) {
 // 返回 usage 对象，若被重定向到 /login 返回 null
 async function fetchUsage(page) {
   await page.goto('https://claude.ai/settings/usage', { waitUntil: 'load' });
+  // 等待 Cloudflare challenge 完成
+  for (let i = 0; i < 10; i++) {
+    const title = await page.title();
+    if (!title.includes('Just a moment')) break;
+    await page.waitForTimeout(3000);
+  }
   await page.waitForTimeout(3000);
 
   if (page.url().includes('/login')) return null;
@@ -151,25 +167,32 @@ async function main() {
   const page = await context.newPage();
 
   // 初始检测：是否需要登录
+  // 优先尝试 sessionKey 注入（无 cookie 文件时直接注入再导航，跳过先访问再判断）
+  if (sessionKey && !fs.existsSync(cookieFile)) {
+    console.log(`[${ts()}][${email}] 🔑 注入 sessionKey...`);
+    await injectSessionKey(context, sessionKey);
+  }
+
   await page.goto('https://claude.ai/settings/usage', { waitUntil: 'load' });
+  // 等待 Cloudflare challenge 完成（检测 title，最多 30 秒）
+  for (let i = 0; i < 10; i++) {
+    const title = await page.title();
+    if (!title.includes('Just a moment')) break;
+    console.log(`[${ts()}][${email}] ⏳ Cloudflare challenge...`);
+    await page.waitForTimeout(3000);
+  }
   await page.waitForTimeout(2000);
 
   if (page.url().includes('/login')) {
-    // 优先尝试 sessionKey 直注入（无 cookie 文件时）
-    if (sessionKey && !fs.existsSync(cookieFile)) {
-      console.log(`[${ts()}][${email}] 🔑 注入 sessionKey...`);
-      await injectSessionKey(context, sessionKey);
-      await page.goto('https://claude.ai/settings/usage', { waitUntil: 'load' });
-      await page.waitForTimeout(2000);
-    }
+    // sessionKey 无效或未配置，回退邮件流程
+    await doLogin(browser, page);
 
-    if (page.url().includes('/login')) {
-      // sessionKey 无效或未配置，回退邮件流程
-      await doLogin(browser, page);
-    } else {
+    await context.storageState({ path: cookieFile });
+    console.log(`[${ts()}][${email}] 💾 Cookie 已保存`);
+  } else {
+    if (sessionKey && !fs.existsSync(cookieFile)) {
       console.log(`[${ts()}][${email}] ✅ sessionKey 登录成功`);
     }
-
     await context.storageState({ path: cookieFile });
     console.log(`[${ts()}][${email}] 💾 Cookie 已保存`);
   }

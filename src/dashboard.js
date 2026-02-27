@@ -11,12 +11,21 @@ const DATA_DIR = process.env.DATA_DIR || '/data';
 
 function apiStatus() {
   const files = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.json'));
+  const cookiesDir = path.join(DATA_DIR, 'cookies');
   const accounts = files.map(f => {
     const raw = JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf-8'));
+    const emailSafe = (raw.email || '').replace('@', '_at_').replace(/\./g, '_');
+    const attemptsFile = path.join(cookiesDir, emailSafe + '.attempts');
+    let loginFailed = false;
+    if (fs.existsSync(attemptsFile)) {
+      const n = parseInt(fs.readFileSync(attemptsFile, 'utf-8'), 10) || 0;
+      if (n >= 3) loginFailed = true;
+    }
     return {
       email: raw.email,
       user: raw.user || null,
       exhausted: false,
+      loginFailed,
       lastUsed: null,
       usageSession: raw.usageSession ?? null,
       usageWeekly: raw.usageWeekly ?? null,
@@ -67,7 +76,7 @@ function renderDashboard() {
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
   .card { background: #1e293b; border-radius: 12px; padding: 20px; position: relative; cursor: pointer; transition: opacity 0.2s, border-color 0.2s; border: 2px solid transparent; }
   .card:hover { border-color: #475569; }
-  .card.exhausted { opacity: 0.45; }
+  .card.exhausted, .card.login-failed { opacity: 0.45; }
   .card.current { border-color: #3b82f6; }
   .badge { position: absolute; top: 12px; right: 12px; background: #3b82f6; color: #fff; font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
   .badge.exhausted-badge { background: #475569; }
@@ -82,6 +91,8 @@ function renderDashboard() {
   .red { background: #ef4444; }
   .resets-at { font-size: 0.75rem; color: #64748b; margin-top: 8px; }
   .checked-at { font-size: 0.72rem; color: #475569; margin-top: 4px; }
+  .retry-btn { background: #f59e0b; color: #000; border: none; border-radius: 6px; padding: 4px 12px; font-size: 0.75rem; font-weight: 600; cursor: pointer; margin-top: 8px; }
+  .retry-btn:hover { background: #d97706; }
 
   /* 历史面板 */
   #history-panel { display: none; position: fixed; top: 0; right: 0; bottom: 0; width: 420px; background: #1e293b; padding: 24px; overflow-y: auto; z-index: 100; box-shadow: -4px 0 24px rgba(0,0,0,0.5); }
@@ -154,8 +165,8 @@ function renderCards(accounts) {
 
   const html = accounts.map(a => {
     const isCurrent = a.email === currentEmail;
-    const classes = ['card', isCurrent ? 'current' : '', a.exhausted ? 'exhausted' : ''].filter(Boolean).join(' ');
-    const badge = isCurrent ? '<span class="badge">当前</span>' : (a.exhausted ? '<span class="badge exhausted-badge">耗尽</span>' : '');
+    const classes = ['card', isCurrent ? 'current' : '', a.exhausted ? 'exhausted' : '', a.loginFailed ? 'login-failed' : ''].filter(Boolean).join(' ');
+    const badge = a.loginFailed ? '<span class="badge exhausted-badge">登录失败</span>' : (isCurrent ? '<span class="badge">当前</span>' : (a.exhausted ? '<span class="badge exhausted-badge">耗尽</span>' : ''));
     return \`<div class="\${classes}" onclick="showHistory('\${a.email}')">
       \${badge}
       <div class="email" title="\${a.email}">\${a.email}</div>
@@ -164,6 +175,7 @@ function renderCards(accounts) {
       \${renderBar('Weekly Limit', a.usageWeekly)}
       \${a.weeklyResetsAt ? \`<div class="resets-at">🔄 \${translateResetTime(a.weeklyResetsAt)}</div>\` : ''}
       <div class="checked-at">上次检查：\${relTime(a.usageCheckedAt)}</div>
+      \${a.loginFailed ? \`<button class="retry-btn" onclick="retryLogin(event, '\${a.email}')">重新登录</button>\` : ''}
     </div>\`;
   }).join('');
 
@@ -301,6 +313,20 @@ function renderHistoryTable(history) {
     </table>\`;
 }
 
+async function retryLogin(event, email) {
+  event.stopPropagation();
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '触发中...';
+  try {
+    await fetch('/api/retry/' + encodeURIComponent(email));
+    btn.textContent = '已触发';
+    setTimeout(fetchStatus, 5000);
+  } catch (e) {
+    btn.textContent = '失败';
+  }
+}
+
 fetchStatus();
 setInterval(fetchStatus, 10 * 60 * 1000);
 </script>
@@ -336,6 +362,21 @@ const server = http.createServer((req, res) => {
     }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(data));
+    return;
+  }
+
+  // /api/retry/:email
+  if (url.startsWith('/api/retry/')) {
+    const email = decodeURIComponent(url.slice('/api/retry/'.length));
+    const emailSafe = email.replace('@', '_at_').replace(/\./g, '_');
+    const triggersDir = path.join(DATA_DIR, 'triggers');
+    if (!fs.existsSync(triggersDir)) fs.mkdirSync(triggersDir, { recursive: true });
+    // 清除 attempts + 写 retry 触发文件
+    const attemptsFile = path.join(DATA_DIR, 'cookies', emailSafe + '.attempts');
+    try { fs.unlinkSync(attemptsFile); } catch (_) {}
+    fs.writeFileSync(path.join(triggersDir, emailSafe + '.retry'), Date.now().toString());
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 

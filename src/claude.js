@@ -217,7 +217,7 @@ async function injectSessionKey(context, sessionKey) {
   await context.addCookies([{
     name: 'sessionKey',
     value: sessionKey,
-    domain: 'claude.ai',
+    domain: '.claude.ai',
     path: '/',
     secure: true,
     httpOnly: true,
