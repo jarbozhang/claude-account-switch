@@ -23,7 +23,7 @@ function runAS(script) {
   const f = path.join(os.tmpdir(), `as_${process.pid}_${Date.now()}.scpt`);
   fs.writeFileSync(f, script);
   try {
-    return execFileSync('osascript', [f], { timeout: 30000 }).toString().trim();
+    return execFileSync('osascript', [f], { timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim();
   } finally {
     try { fs.unlinkSync(f); } catch (_) {}
   }
@@ -239,4 +239,4 @@ function restoreFrontApp(appName) {
   } catch (_) {}
 }
 
-module.exports = { openChrome, waitForAuthorizeTab, findClaudeTab, saveFrontApp, restoreFrontApp };
+module.exports = { runAS, getTabCount, ChromePage, openChrome, waitForAuthorizeTab, findClaudeTab, saveFrontApp, restoreFrontApp };

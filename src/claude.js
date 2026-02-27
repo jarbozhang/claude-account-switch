@@ -1,7 +1,8 @@
 'use strict';
 
 const { execFileSync, spawn } = require('child_process');
-const { waitForAuthorizeTab, findClaudeTab, saveFrontApp, restoreFrontApp } = require('./browser');
+const http = require('http');
+const { runAS, waitForAuthorizeTab, findClaudeTab, saveFrontApp, restoreFrontApp } = require('./browser');
 
 const CLAUDE_URL = 'https://claude.ai';
 const LOGIN_URL = 'https://claude.ai/login';
@@ -93,6 +94,7 @@ async function claudeCodeLogin() {
     console.log('   脚本将自动检测并点击 Authorize 按钮');
     console.log('────────────────────────');
 
+    const prevApp1 = saveFrontApp();
     const authPage = await waitForAuthorizeTab(120000);
     await authPage.evaluate(() => {
       const btn = Array.from(document.querySelectorAll('button'))
@@ -100,6 +102,9 @@ async function claudeCodeLogin() {
       if (btn) btn.click();
     });
     console.log('✅ 已点击 Authorize');
+    await new Promise(r => setTimeout(r, 1500));
+    await authPage.close();
+    restoreFrontApp(prevApp1);
     return;
   }
 
@@ -128,13 +133,17 @@ async function claudeCodeLogin() {
 
   // 3. 并行等待 authorize 页面出现并点击
   console.log('   等待 Authorize 页面...');
-  const authPage = await waitForAuthorizeTab(120000);
-  await authPage.evaluate(() => {
+  const prevApp2 = saveFrontApp();
+  const authPage2 = await waitForAuthorizeTab(120000);
+  await authPage2.evaluate(() => {
     const btn = Array.from(document.querySelectorAll('button'))
       .find(b => /authorize|allow/i.test(b.innerText));
     if (btn) btn.click();
   });
   console.log('✅ 已点击 Authorize');
+  await new Promise(r => setTimeout(r, 1500));
+  await authPage2.close();
+  restoreFrontApp(prevApp2);
 
   // 4. 等待 login 进程完成
   await loginDone;
@@ -217,31 +226,75 @@ async function injectSessionKey(context, sessionKey) {
 }
 
 /**
- * 通过 CDP 注入 sessionKey cookie（用于本机 Chrome）
- * Chrome 需以 --remote-debugging-port=9222 启动
+ * 通过 Chrome 扩展注入 sessionKey cookie（用于本机 Chrome）
+ * 流程：启动临时 HTTP 服务 → Chrome 打开注入页 → 扩展设置 httpOnly cookie → 轮询 tab title 确认
  * @param {string} sessionKey
- * @param {string} [cdpUrl]
  * @returns {Promise<boolean>} 注入是否成功
  */
-async function injectSessionKeyViaCDP(sessionKey, cdpUrl = 'http://localhost:9222') {
-  const { chromium } = require('playwright');
+async function injectSessionKeyViaExtension(sessionKey) {
+  const PORT = 19222;
+  const html = `<!DOCTYPE html><html><head><title>INJECTING</title></head><body>
+<div id="session-key-data" data-key="${sessionKey.replace(/"/g, '&quot;')}"></div>
+<p>Injecting sessionKey...</p></body></html>`;
+
+  // 1. 启动临时 HTTP 服务
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(html);
+  });
+
+  await new Promise((resolve, reject) => {
+    server.listen(PORT, '127.0.0.1', resolve);
+    server.on('error', reject);
+  });
+
   try {
-    const browser = await chromium.connectOverCDP(cdpUrl);
-    const contexts = browser.contexts();
-    if (contexts.length === 0) return false;
-    await contexts[0].addCookies([{
-      name: 'sessionKey',
-      value: sessionKey,
-      domain: 'claude.ai',
-      path: '/',
-      secure: true,
-      httpOnly: true,
-      sameSite: 'Lax'
-    }]);
-    return true;
-  } catch {
-    return false;
+    // 2. 在 Chrome 开新标签访问注入页
+    const prevApp = saveFrontApp();
+    runAS(`tell application "Google Chrome"
+  tell front window
+    make new tab with properties {URL:"http://localhost:${PORT}/inject"}
+  end tell
+end tell`);
+
+    // 3. 轮询 tab title，等待扩展完成
+    const deadline = Date.now() + 10000;
+    let success = false;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 500));
+      try {
+        const title = runAS(`tell application "Google Chrome"
+  set tabCount to count tabs of front window
+  repeat with i from 1 to tabCount
+    if URL of tab i of front window contains "localhost:${PORT}" then
+      return title of tab i of front window
+    end if
+  end repeat
+  return ""
+end tell`);
+        if (title === 'COOKIE_SET_OK') { success = true; break; }
+        if (title === 'COOKIE_SET_FAIL') break;
+      } catch (_) {}
+    }
+
+    // 4. 关闭注入标签
+    try {
+      runAS(`tell application "Google Chrome"
+  set tabCount to count tabs of front window
+  repeat with i from tabCount to 1 by -1
+    if URL of tab i of front window contains "localhost:${PORT}" then
+      close tab i of front window
+      exit repeat
+    end if
+  end repeat
+end tell`);
+    } catch (_) {}
+
+    restoreFrontApp(prevApp);
+    return success;
+  } finally {
+    server.close();
   }
 }
 
-module.exports = { getCurrentEmail, logout, inputEmail, claudeCodeLogin, checkUsage, injectSessionKey, injectSessionKeyViaCDP };
+module.exports = { getCurrentEmail, logout, inputEmail, claudeCodeLogin, checkUsage, injectSessionKey, injectSessionKeyViaExtension };

@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Claude Cookie Injector",
+  "version": "1.0",
+  "permissions": ["cookies"],
+  "host_permissions": ["https://claude.ai/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [{
+    "matches": ["http://localhost:19222/*"],
+    "js": ["content.js"],
+    "run_at": "document_idle"
+  }]
+}

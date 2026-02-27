@@ -8,6 +8,8 @@
 - Web 看板实时展示各账号用量百分比与 weekly 重置时间
 - 支持 **sessionKey 直注入**登录（跳过邮件验证，秒级完成）
 - 回退支持 [171mail](https://b.171mail.com/?type=claude) 邮件验证登录
+- **本机 Chrome 扩展注入**：通过 Chrome 扩展设置 httpOnly cookie，无需重启 Chrome
+- **Authorize 自动点击**：后台监听 Claude Code `/login` 的 OAuth 授权页，自动点击并恢复焦点
 
 ## 快速开始
 
@@ -81,6 +83,31 @@ sessionKey 有效期约数周至数月，过期后自动回退邮件验证流程
 保存 cookie 文件供下次恢复
 ```
 
+## 本机 Chrome 账号切换
+
+### 安装 Chrome 扩展（一次性）
+
+1. Chrome 地址栏输入 `chrome://extensions`
+2. 开启"开发者模式"
+3. "加载已解压的扩展程序" → 选择项目 `extension/` 目录
+4. Chrome 菜单 → View → Developer → 勾选 **Allow JavaScript from Apple Events**
+
+### 切换账号
+
+```bash
+npm run switch -- account@example.com
+```
+
+### Authorize 自动点击
+
+在终端后台运行，自动处理 Claude Code `/login` 的 OAuth 授权：
+
+```bash
+npm run auth-watch
+```
+
+运行后，在 Kaku 中执行 `/login` 即可全自动完成授权，无需手动切换窗口。
+
 ## 目录结构
 
 ```
@@ -89,8 +116,14 @@ claude-account-switch/
 │   ├── scraper-single.js  # 单账号 scraper，每容器独立运行
 │   ├── dashboard.js       # Web 看板服务（port 3399）
 │   ├── claude.js          # claude.ai 登录 / 注入 / usage 查询
+│   ├── auth-watch.js      # Authorize 自动点击后台监听
+│   ├── browser.js         # Chrome AppleScript 控制
 │   ├── mail.js            # 171mail 接码，获取验证链接
 │   └── accounts.js        # config.json 读取
+├── extension/             # Chrome 扩展（sessionKey 注入）
+│   ├── manifest.json
+│   ├── background.js
+│   └── content.js
 ├── scripts/
 │   └── gen-compose.js     # 根据 config.json 生成 docker-compose
 ├── data/                  # 运行时数据（挂载到容器）

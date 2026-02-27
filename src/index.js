@@ -2,7 +2,7 @@
 
 const { openChrome } = require('./browser');
 const { getNextAccount, getAccountByEmail, markAccountUsed } = require('./accounts');
-const { getCurrentEmail, checkUsage, logout, inputEmail, claudeCodeLogin, injectSessionKeyViaCDP } = require('./claude');
+const { getCurrentEmail, checkUsage, logout, inputEmail, claudeCodeLogin, injectSessionKeyViaExtension } = require('./claude');
 const { fetchVerifyLink } = require('./mail');
 
 const THRESHOLD = 50;
@@ -47,11 +47,11 @@ async function main() {
     let loggedIn = false;
 
     if (account.sessionKey) {
-      // 优先：通过 CDP 注入 sessionKey（需 Chrome 开启 --remote-debugging-port=9222）
-      console.log('🔑 sessionKey 注入（CDP）...');
-      const injected = await injectSessionKeyViaCDP(account.sessionKey);
+      // 优先：通过 Chrome 扩展注入 sessionKey（需安装 extension/ 目录的扩展）
+      console.log('🔑 sessionKey 注入...');
+      const injected = await injectSessionKeyViaExtension(account.sessionKey);
       if (!injected) {
-        console.log('⚠️  无法连接 Chrome 调试端口，请以 --remote-debugging-port=9222 启动 Chrome');
+        console.log('⚠️  扩展注入失败，请确认已安装 extension/ 目录的 Chrome 扩展');
       } else {
         await page.goto('https://claude.ai/settings/usage', { waitUntil: 'load' });
         await page.waitForTimeout(2000);
