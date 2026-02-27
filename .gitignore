@@ -11,3 +11,7 @@ config.json
 *.pem
 .env
 .env.*
+
+# 运行时生成的用户数据
+data/
+docker-compose.generated.yml

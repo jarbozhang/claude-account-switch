@@ -3,40 +3,45 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { getConfig } = require('./accounts');
 
 const PORT = parseInt(process.env.DASHBOARD_PORT, 10) || 3399;
-const TRIGGER_FILE = path.join(__dirname, '..', '.trigger');
+const DATA_DIR = process.env.DATA_DIR || '/data';
 
 // ---- API handlers ----
 
 function apiStatus() {
-  const config = getConfig();
-  const accounts = config.accounts.map(a => ({
-    email: a.email,
-    user: a.user || null,
-    exhausted: !!a.exhausted,
-    lastUsed: a.lastUsed || null,
-    usageSession: a.usageSession ?? null,
-    usageWeekly: a.usageWeekly ?? null,
-    usageCheckedAt: a.usageCheckedAt || null,
-    weeklyResetsAt: a.weeklyResetsAt || null,
-  }));
+  const files = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.json'));
+  const accounts = files.map(f => {
+    const raw = JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf-8'));
+    return {
+      email: raw.email,
+      user: raw.user || null,
+      exhausted: false,
+      lastUsed: null,
+      usageSession: raw.usageSession ?? null,
+      usageWeekly: raw.usageWeekly ?? null,
+      usageCheckedAt: raw.usageCheckedAt || null,
+      weeklyResetsAt: raw.weeklyResetsAt || null,
+    };
+  });
   return { accounts };
 }
 
 function apiHistory(email) {
-  const config = getConfig();
-  const account = config.accounts.find(a => a.email === email);
-  if (!account) return null;
-  return { email, history: account.usageHistory || [] };
+  const emailSafe = email.replace('@', '_at_').replace(/\./g, '_');
+  const filePath = path.join(DATA_DIR, emailSafe + '.json');
+  if (!fs.existsSync(filePath)) return null;
+  const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  return { email, history: raw.usageHistory || [] };
 }
 
 function apiCheck() {
-  // 写 .trigger 文件，scraper 轮询到后立即执行一次检查
-  try {
-    fs.writeFileSync(TRIGGER_FILE, Date.now().toString());
-  } catch (_) {}
+  const triggersDir = path.join(DATA_DIR, 'triggers');
+  if (!fs.existsSync(triggersDir)) fs.mkdirSync(triggersDir, { recursive: true });
+  const files = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.json'));
+  files.forEach(f => {
+    fs.writeFileSync(path.join(triggersDir, f.replace('.json', '.trigger')), Date.now().toString());
+  });
   return { ok: true };
 }
 

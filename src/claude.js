@@ -198,4 +198,21 @@ async function checkUsage() {
   }
 }
 
-module.exports = { getCurrentEmail, logout, inputEmail, claudeCodeLogin, checkUsage };
+/**
+ * 通过直接注入 sessionKey cookie 登录（跳过邮件验证）
+ * @param {import('playwright').BrowserContext} context - Playwright browser context
+ * @param {string} sessionKey - 从 claude.ai cookie 复制的 sessionKey 值
+ */
+async function injectSessionKey(context, sessionKey) {
+  await context.addCookies([{
+    name: 'sessionKey',
+    value: sessionKey,
+    domain: 'claude.ai',
+    path: '/',
+    secure: true,
+    httpOnly: true,
+    sameSite: 'Lax'
+  }]);
+}
+
+module.exports = { getCurrentEmail, logout, inputEmail, claudeCodeLogin, checkUsage, injectSessionKey };
