@@ -200,8 +200,9 @@ async function checkUsage() {
 
 /**
  * 通过直接注入 sessionKey cookie 登录（跳过邮件验证）
- * @param {import('playwright').BrowserContext} context - Playwright browser context
- * @param {string} sessionKey - 从 claude.ai cookie 复制的 sessionKey 值
+ * 用于 Playwright context（Docker 容器）
+ * @param {import('playwright').BrowserContext} context
+ * @param {string} sessionKey
  */
 async function injectSessionKey(context, sessionKey) {
   await context.addCookies([{
@@ -215,4 +216,17 @@ async function injectSessionKey(context, sessionKey) {
   }]);
 }
 
-module.exports = { getCurrentEmail, logout, inputEmail, claudeCodeLogin, checkUsage, injectSessionKey };
+/**
+ * 通过 JS document.cookie 注入 sessionKey（用于本机 Chrome AppleScript 模式）
+ * @param {ChromePage} page
+ * @param {string} sessionKey
+ */
+async function injectSessionKeyViaJS(page, sessionKey) {
+  await page.goto(CLAUDE_URL, { waitUntil: 'load' });
+  await page.evaluate((key) => {
+    document.cookie = `sessionKey=${key}; path=/; secure; samesite=lax`;
+  }, sessionKey);
+  await page.waitForTimeout(500);
+}
+
+module.exports = { getCurrentEmail, logout, inputEmail, claudeCodeLogin, checkUsage, injectSessionKey, injectSessionKeyViaJS };

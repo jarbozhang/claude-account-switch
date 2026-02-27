@@ -2,7 +2,7 @@
 
 const { openChrome } = require('./browser');
 const { getNextAccount, getAccountByEmail, markAccountUsed } = require('./accounts');
-const { getCurrentEmail, checkUsage, logout, inputEmail, claudeCodeLogin } = require('./claude');
+const { getCurrentEmail, checkUsage, logout, inputEmail, claudeCodeLogin, injectSessionKeyViaJS } = require('./claude');
 const { fetchVerifyLink } = require('./mail');
 
 const THRESHOLD = 50;
@@ -43,27 +43,40 @@ async function main() {
   }
 
   try {
-    // 3. 登出当前账号
-    await logout(page);
+    // 3. 登录目标账号
+    let loggedIn = false;
 
-    // 4. 输入新邮箱，触发验证邮件
-    await inputEmail(page, account.email);
+    if (account.sessionKey) {
+      // 优先：sessionKey 直注入（无需登出，秒级完成）
+      console.log('🔑 sessionKey 直注入...');
+      await injectSessionKeyViaJS(page, account.sessionKey);
+      await page.goto('https://claude.ai/settings/usage', { waitUntil: 'load' });
+      await page.waitForTimeout(2000);
+      loggedIn = !page.url().includes('/login');
+      if (loggedIn) {
+        console.log('✅ sessionKey 登录成功');
+      } else {
+        console.log('⚠️  sessionKey 无效，回退邮件流程...');
+      }
+    }
 
-    // 5. 在接码页面获取验证链接
-    const mailPage = await context.newPage();
-    const verifyLink = await fetchVerifyLink(mailPage, account.token);
-    await mailPage.close();
+    if (!loggedIn) {
+      // 回退：邮件验证流程
+      await logout(page);
+      await inputEmail(page, account.email);
+      const mailPage = await context.newPage();
+      const verifyLink = await fetchVerifyLink(mailPage, account.token);
+      await mailPage.close();
+      console.log('🔗 点击验证链接...');
+      await page.goto(verifyLink, { waitUntil: 'load' });
+      await page.waitForTimeout(2000);
+      console.log('✅ Claude 账号登录成功');
+    }
 
-    // 6. 点击验证链接完成登录
-    console.log('🔗 点击验证链接...');
-    await page.goto(verifyLink, { waitUntil: 'load' });
-    await page.waitForTimeout(2000);
-    console.log('✅ Claude 账号登录成功');
-
-    // 7. 记录使用时间
+    // 4. 记录使用时间
     markAccountUsed(account.email);
 
-    // 8. 自动完成 Claude Code OAuth 登录
+    // 5. 自动完成 Claude Code OAuth 登录
     await claudeCodeLogin();
 
     // 9. 完成
