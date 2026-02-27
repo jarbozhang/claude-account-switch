@@ -217,16 +217,31 @@ async function injectSessionKey(context, sessionKey) {
 }
 
 /**
- * 通过 JS document.cookie 注入 sessionKey（用于本机 Chrome AppleScript 模式）
- * @param {ChromePage} page
+ * 通过 CDP 注入 sessionKey cookie（用于本机 Chrome）
+ * Chrome 需以 --remote-debugging-port=9222 启动
  * @param {string} sessionKey
+ * @param {string} [cdpUrl]
+ * @returns {Promise<boolean>} 注入是否成功
  */
-async function injectSessionKeyViaJS(page, sessionKey) {
-  await page.goto(CLAUDE_URL, { waitUntil: 'load' });
-  await page.evaluate((key) => {
-    document.cookie = `sessionKey=${key}; path=/; secure; samesite=lax`;
-  }, sessionKey);
-  await page.waitForTimeout(500);
+async function injectSessionKeyViaCDP(sessionKey, cdpUrl = 'http://localhost:9222') {
+  const { chromium } = require('playwright');
+  try {
+    const browser = await chromium.connectOverCDP(cdpUrl);
+    const contexts = browser.contexts();
+    if (contexts.length === 0) return false;
+    await contexts[0].addCookies([{
+      name: 'sessionKey',
+      value: sessionKey,
+      domain: 'claude.ai',
+      path: '/',
+      secure: true,
+      httpOnly: true,
+      sameSite: 'Lax'
+    }]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-module.exports = { getCurrentEmail, logout, inputEmail, claudeCodeLogin, checkUsage, injectSessionKey, injectSessionKeyViaJS };
+module.exports = { getCurrentEmail, logout, inputEmail, claudeCodeLogin, checkUsage, injectSessionKey, injectSessionKeyViaCDP };

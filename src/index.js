@@ -2,7 +2,7 @@
 
 const { openChrome } = require('./browser');
 const { getNextAccount, getAccountByEmail, markAccountUsed } = require('./accounts');
-const { getCurrentEmail, checkUsage, logout, inputEmail, claudeCodeLogin, injectSessionKeyViaJS } = require('./claude');
+const { getCurrentEmail, checkUsage, logout, inputEmail, claudeCodeLogin, injectSessionKeyViaCDP } = require('./claude');
 const { fetchVerifyLink } = require('./mail');
 
 const THRESHOLD = 50;
@@ -47,16 +47,20 @@ async function main() {
     let loggedIn = false;
 
     if (account.sessionKey) {
-      // 优先：sessionKey 直注入（无需登出，秒级完成）
-      console.log('🔑 sessionKey 直注入...');
-      await injectSessionKeyViaJS(page, account.sessionKey);
-      await page.goto('https://claude.ai/settings/usage', { waitUntil: 'load' });
-      await page.waitForTimeout(2000);
-      loggedIn = !page.url().includes('/login');
-      if (loggedIn) {
-        console.log('✅ sessionKey 登录成功');
+      // 优先：通过 CDP 注入 sessionKey（需 Chrome 开启 --remote-debugging-port=9222）
+      console.log('🔑 sessionKey 注入（CDP）...');
+      const injected = await injectSessionKeyViaCDP(account.sessionKey);
+      if (!injected) {
+        console.log('⚠️  无法连接 Chrome 调试端口，请以 --remote-debugging-port=9222 启动 Chrome');
       } else {
-        console.log('⚠️  sessionKey 无效，回退邮件流程...');
+        await page.goto('https://claude.ai/settings/usage', { waitUntil: 'load' });
+        await page.waitForTimeout(2000);
+        loggedIn = !page.url().includes('/login');
+        if (loggedIn) {
+          console.log('✅ sessionKey 登录成功');
+        } else {
+          console.log('⚠️  sessionKey 已过期，回退邮件流程...');
+        }
       }
     }
 
