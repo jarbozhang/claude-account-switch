@@ -1,14 +1,85 @@
 'use strict';
 
+const readline = require('readline');
 const { openChrome } = require('./browser');
-const { getNextAccount, getAccountByEmail, markAccountUsed } = require('./accounts');
+const { getNextAccount, getAccountByEmail, markAccountUsed, getConfig } = require('./accounts');
 const { getCurrentEmail, checkUsage, logout, inputEmail, claudeCodeLogin, injectSessionKeyViaExtension } = require('./claude');
 const { fetchVerifyLink } = require('./mail');
 
 const THRESHOLD = 50;
 
+function fetchDashboardUsage() {
+  return new Promise((resolve) => {
+    const http = require('http');
+    const req = http.get('http://localhost:3399/api/status', { timeout: 3000 }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(data).accounts || []); } catch { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.on('timeout', () => { req.destroy(); resolve([]); });
+  });
+}
+
+function formatUsage(pct) {
+  if (pct === null || pct === undefined) return '—';
+  return `${pct}%`;
+}
+
+function usageBar(pct) {
+  if (pct === null || pct === undefined) return '';
+  const filled = Math.round(pct / 10);
+  return '█'.repeat(filled) + '░'.repeat(10 - filled);
+}
+
+async function promptEmail() {
+  const config = getConfig();
+  const accounts = config.accounts || [];
+
+  const dashboardAccounts = await fetchDashboardUsage();
+  const usageMap = {};
+  dashboardAccounts.forEach(a => { usageMap[a.email.toLowerCase()] = a; });
+
+  console.log('');
+  console.log('📋 可用账号：');
+  accounts.forEach((a, i) => {
+    const typeTag = a.exhausted ? '❌' : (a.sessionKey ? '🔑' : '📧');
+    const u = usageMap[a.email.toLowerCase()];
+    let usageInfo = '';
+    if (u) {
+      const s = formatUsage(u.usageSession);
+      const w = formatUsage(u.usageWeekly);
+      usageInfo = `  session ${usageBar(u.usageSession)} ${s}  weekly ${w}`;
+    }
+    const userName = u ? ` (${u.user})` : '';
+    console.log(`  [${i + 1}] ${typeTag} ${a.email}${userName}${usageInfo}`);
+  });
+  console.log('');
+
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question('🎯 输入邮箱或序号（回车自动选择）：', (answer) => {
+      rl.close();
+      const trimmed = answer.trim();
+      if (!trimmed) { resolve(null); return; }
+
+      // 序号
+      const idx = parseInt(trimmed, 10);
+      if (!isNaN(idx) && idx >= 1 && idx <= accounts.length) {
+        resolve(accounts[idx - 1].email);
+        return;
+      }
+
+      // 邮箱
+      resolve(trimmed);
+    });
+  });
+}
+
 async function main() {
-  const targetEmail = process.argv[2] || null;
+  const targetEmail = await promptEmail();
 
   console.log('🔄 Claude 账号切换工具');
   console.log('────────────────────────');
@@ -53,7 +124,7 @@ async function main() {
       if (!injected) {
         console.log('⚠️  扩展注入失败，请确认已安装 extension/ 目录的 Chrome 扩展');
       } else {
-        await page.goto('https://claude.ai/settings/usage', { waitUntil: 'load' });
+        await page.goto('https://claude.ai', { waitUntil: 'load' });
         await page.waitForTimeout(2000);
         loggedIn = !page.url().includes('/login');
         if (loggedIn) {
@@ -86,6 +157,7 @@ async function main() {
     // 9. 完成
     console.log('');
     console.log('🎉 账号切换完成！');
+    process.exit(0);
 
   } catch (err) {
     console.error('❌ 出错：', err.message);
