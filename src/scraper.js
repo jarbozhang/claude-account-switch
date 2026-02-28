@@ -41,14 +41,15 @@ async function checkAccount(browser, account) {
 
     // 6. DOM 解析
     const usage = await page.evaluate(() => {
-      const result = { session: null, weekly: null, weeklyResetsAt: null };
+      const result = { session: null, weekly: null, weeklyResetsAt: null, sessionResetsAt: null };
       let mode = null;
       for (const p of document.querySelectorAll('p')) {
         const text = p.innerText.trim();
         if (text === 'Current session') { mode = 'session'; continue; }
         if (text.includes('Weekly') || text === 'All models') { mode = 'weekly'; continue; }
-        if (mode === 'weekly' && text.startsWith('Resets ')) {
-          result.weeklyResetsAt = text; // e.g. "Resets Wed 8:00 AM"
+        if (mode && text.startsWith('Resets ')) {
+          if (mode === 'session') result.sessionResetsAt = text;
+          if (mode === 'weekly') result.weeklyResetsAt = text;
           continue;
         }
         const m = text.match(/^(\d{1,3})%\s*used$/);
@@ -57,10 +58,10 @@ async function checkAccount(browser, account) {
       return result;
     });
 
-    console.log(`[${account.email}] ✅ session=${usage.session ?? '?'}% weekly=${usage.weekly ?? '?'}% resets=${usage.weeklyResetsAt ?? '?'}`);
+    console.log(`[${account.email}] ✅ session=${usage.session ?? '?'}% (${usage.sessionResetsAt ?? '?'}) weekly=${usage.weekly ?? '?'}% (${usage.weeklyResetsAt ?? '?'})`);
 
     // 7. 写 config.json（含历史记录）
-    saveAccountUsage(account.email, usage.session, usage.weekly, usage.weeklyResetsAt);
+    saveAccountUsage(account.email, usage.session, usage.weekly, usage.weeklyResetsAt, usage.sessionResetsAt);
 
     // 8. 登出，准备下一个账号
     await logout(page);

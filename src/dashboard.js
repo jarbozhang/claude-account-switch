@@ -31,6 +31,7 @@ function apiStatus() {
       usageWeekly: raw.usageWeekly ?? null,
       usageCheckedAt: raw.usageCheckedAt || null,
       weeklyResetsAt: raw.weeklyResetsAt || null,
+      sessionResetsAt: raw.sessionResetsAt || null,
     };
   });
   return { accounts };
@@ -84,6 +85,7 @@ function renderDashboard() {
   .username { font-size: 0.8rem; color: #94a3b8; margin-bottom: 12px; }
   .metric { margin-bottom: 10px; }
   .metric-label { font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px; display: flex; justify-content: space-between; }
+  .reset-sub { margin-left: 8px; font-size: 0.65rem; color: #64748b; }
   .bar-bg { background: #334155; border-radius: 999px; height: 8px; overflow: hidden; }
   .bar-fill { height: 100%; border-radius: 999px; transition: width 0.4s; }
   .green { background: #22c55e; }
@@ -128,6 +130,13 @@ function barColor(pct) {
 
 function translateResetTime(s) {
   if (!s) return null;
+  // "Resets in 4 hr 3 min" 格式（session）
+  const inMatch = s.match(/^Resets\\s+in\\s+(.+)$/i);
+  if (inMatch) {
+    const t = inMatch[1].replace(/(\\d+)\\s*hr/i, '$1小时').replace(/(\\d+)\\s*min/i, '$1分钟');
+    return \`\${t}后重置\`;
+  }
+  // "Resets Fri 11:00 AM" 格式（weekly）
   const days = { Mon:'周一', Tue:'周二', Wed:'周三', Thu:'周四', Fri:'周五', Sat:'周六', Sun:'周日' };
   return s.replace(/^Resets\\s+(\\w+)\\s+(\\d+:\\d+)\\s*(AM|PM)?/i, (_, day, time, ampm) => {
     const d = days[day] || day;
@@ -144,12 +153,13 @@ function relTime(ts) {
   return Math.floor(diff / 3600) + ' 小时前';
 }
 
-function renderBar(label, pct) {
+function renderBar(label, pct, resetText) {
   const color = barColor(pct);
   const width = pct !== null ? pct : 0;
   const text = pct !== null ? pct + '%' : '—';
+  const sub = resetText ? \`<span class="reset-sub">\${resetText}</span>\` : '';
   return \`<div class="metric">
-    <div class="metric-label"><span>\${label}</span><span>\${text}</span></div>
+    <div class="metric-label"><span>\${label}\${sub}</span><span>\${text}</span></div>
     <div class="bar-bg"><div class="bar-fill \${color}" style="width:\${width}%"></div></div>
   </div>\`;
 }
@@ -171,9 +181,8 @@ function renderCards(accounts) {
       \${badge}
       <div class="email" title="\${a.email}">\${a.email}</div>
       \${a.user ? \`<div class="username">\${a.user}</div>\` : ''}
-      \${renderBar('Current Session', a.usageSession)}
-      \${renderBar('Weekly Limit', a.usageWeekly)}
-      \${a.weeklyResetsAt ? \`<div class="resets-at">🔄 \${translateResetTime(a.weeklyResetsAt)}</div>\` : ''}
+      \${renderBar('Current Session', a.usageSession, a.sessionResetsAt ? translateResetTime(a.sessionResetsAt) : null)}
+      \${renderBar('Weekly Limit', a.usageWeekly, a.weeklyResetsAt ? translateResetTime(a.weeklyResetsAt) : null)}
       <div class="checked-at">上次检查：\${relTime(a.usageCheckedAt)}</div>
       \${a.loginFailed ? \`<button class="retry-btn" onclick="retryLogin(event, '\${a.email}')">重新登录</button>\` : ''}
     </div>\`;

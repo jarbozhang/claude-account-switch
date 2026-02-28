@@ -42,7 +42,7 @@ function readData() {
   }
 }
 
-function writeData(usageSession, usageWeekly, weeklyResetsAt) {
+function writeData(usageSession, usageWeekly, weeklyResetsAt, sessionResetsAt) {
   const current = readData();
   const now = Date.now();
 
@@ -60,6 +60,7 @@ function writeData(usageSession, usageWeekly, weeklyResetsAt) {
     usageWeekly,
     usageCheckedAt: now,
     weeklyResetsAt,
+    sessionResetsAt,
   };
 
   fs.writeFileSync(dataFile, JSON.stringify(updated, null, 2));
@@ -133,14 +134,15 @@ async function fetchUsage(page) {
 
   // 直接复用 scraper.js:43-58 的 evaluate 代码
   return await page.evaluate(() => {
-    const result = { session: null, weekly: null, weeklyResetsAt: null };
+    const result = { session: null, weekly: null, weeklyResetsAt: null, sessionResetsAt: null };
     let mode = null;
     for (const p of document.querySelectorAll('p')) {
       const text = p.innerText.trim();
       if (text === 'Current session') { mode = 'session'; continue; }
       if (text.includes('Weekly') || text === 'All models') { mode = 'weekly'; continue; }
-      if (mode === 'weekly' && text.startsWith('Resets ')) {
-        result.weeklyResetsAt = text;
+      if (mode && text.startsWith('Resets ')) {
+        if (mode === 'session') result.sessionResetsAt = text;
+        if (mode === 'weekly') result.weeklyResetsAt = text;
         continue;
       }
       const m = text.match(/^(\d{1,3})%\s*used$/);
@@ -225,8 +227,8 @@ async function main() {
         return;
       }
 
-      writeData(usage.session, usage.weekly, usage.weeklyResetsAt);
-      console.log(`[${ts()}][${email}] ✅ session=${usage.session ?? '?'}% weekly=${usage.weekly ?? '?'}% resets=${usage.weeklyResetsAt ?? '?'}`);
+      writeData(usage.session, usage.weekly, usage.weeklyResetsAt, usage.sessionResetsAt);
+      console.log(`[${ts()}][${email}] ✅ session=${usage.session ?? '?'}% (${usage.sessionResetsAt ?? '?'}) weekly=${usage.weekly ?? '?'}% (${usage.weeklyResetsAt ?? '?'})`);
     } catch (e) {
       console.error(`[${ts()}][${email}] ❌ 检查失败：${e.message}`);
     } finally {

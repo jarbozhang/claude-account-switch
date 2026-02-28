@@ -78,7 +78,7 @@ function getConfig() {
   return loadConfig();
 }
 
-function saveAccountUsage(email, session, weekly, weeklyResetsAt = null) {
+function saveAccountUsage(email, session, weekly, weeklyResetsAt = null, sessionResetsAt = null) {
   const config = loadConfig();
   const account = config.accounts.find(a => a.email === email);
   if (!account) return;
@@ -87,6 +87,7 @@ function saveAccountUsage(email, session, weekly, weeklyResetsAt = null) {
   account.usageWeekly = weekly;
   account.usageCheckedAt = Date.now();
   if (weeklyResetsAt !== null) account.weeklyResetsAt = weeklyResetsAt;
+  if (sessionResetsAt !== null) account.sessionResetsAt = sessionResetsAt;
 
   // 追加历史记录（最多保留 200 条 ≈ 33 小时）
   if (!account.usageHistory) account.usageHistory = [];
