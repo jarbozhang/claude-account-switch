@@ -63,8 +63,6 @@ async function checkAccount(browser, account) {
     // 7. 写 config.json（含历史记录）
     saveAccountUsage(account.email, usage.session, usage.weekly, usage.weeklyResetsAt, usage.sessionResetsAt);
 
-    // 8. 登出，准备下一个账号
-    await logout(page);
   } finally {
     await page.close().catch(() => {});
   }

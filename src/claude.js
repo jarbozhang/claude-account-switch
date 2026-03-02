@@ -112,15 +112,7 @@ async function claudeCodeLogin() {
   console.log('────────────────────────');
   console.log('🤖 检测到 claude CLI，自动执行 OAuth 登录...');
 
-  // 1. 清除旧认证
-  try {
-    execFileSync('claude', ['auth', 'logout'], { stdio: 'pipe' });
-    console.log('🚪 已清除旧 Claude Code 认证');
-  } catch {
-    // logout 失败说明本来就没认证，忽略
-  }
-
-  // 2. 启动 OAuth 流程
+  // 启动 OAuth 流程
   const loginProc = spawn('claude', ['auth', 'login'], { stdio: 'pipe' });
 
   const loginDone = new Promise((resolve, reject) => {
