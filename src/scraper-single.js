@@ -155,6 +155,12 @@ async function fetchUsage(page) {
 async function main() {
   ensureDirs();
 
+  // 错开启动，避免多容器同时触发 CF
+  const STARTUP_DELAY_MS = parseInt(process.env.STARTUP_DELAY_MS, 10) || 0;
+  const delay = STARTUP_DELAY_MS || Math.floor(Math.random() * 60000);
+  console.log(`[${ts()}][${email}] ⏳ 启动延迟 ${Math.round(delay / 1000)}s...`);
+  await new Promise(r => setTimeout(r, delay));
+
   const browser = await chromium.launch({ headless: false });
 
   let contextOptions = {};
