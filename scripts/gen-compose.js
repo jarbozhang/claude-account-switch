@@ -38,7 +38,7 @@ const scraperServices = accounts.map((account) => {
 
   return `  ${serviceName}:
     build: .
-    command: bash -c "rm -f /tmp/.X99-lock && Xvfb :99 -screen 0 1280x720x24 -ac & sleep 1 && DISPLAY=:99 node src/scraper-single.js"
+    command: python3 src/scraper-single.py
     volumes:
       - ./data:/data
     environment:
@@ -48,8 +48,9 @@ ${envLines.join('\n')}
 
 const yaml = `services:
   dashboard:
-    build: .
-    command: node src/dashboard.js
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
     ports:
       - "3399:3399"
     volumes:

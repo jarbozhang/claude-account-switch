@@ -119,36 +119,25 @@ async function doLogin(browser, page) {
   }
 }
 
-// 返回 usage 对象，若被重定向到 /login 返回 null
-async function fetchUsage(page) {
-  await page.goto('https://claude.ai/settings/usage', { waitUntil: 'load' });
-  // 等待 Cloudflare challenge 完成
-  for (let i = 0; i < 10; i++) {
-    const title = await page.title();
-    if (!title.includes('Just a moment')) break;
-    await page.waitForTimeout(3000);
-  }
-  await page.waitForTimeout(3000);
+// 通过页面上下文中的 fetch 调用 API 获取 usage（绕过 CF 重新验证）
+async function fetchUsageViaAPI(page) {
+  return await page.evaluate(async () => {
+    try {
+      // 1. 获取 orgId
+      const orgsRes = await fetch('/api/organizations');
+      if (orgsRes.status === 401 || orgsRes.status === 403) return null;
+      const orgs = await orgsRes.json();
+      if (!orgs || !orgs.length) return null;
+      const orgId = orgs[0].uuid;
 
-  if (page.url().includes('/login')) return null;
-
-  // 直接复用 scraper.js:43-58 的 evaluate 代码
-  return await page.evaluate(() => {
-    const result = { session: null, weekly: null, weeklyResetsAt: null, sessionResetsAt: null };
-    let mode = null;
-    for (const p of document.querySelectorAll('p')) {
-      const text = p.innerText.trim();
-      if (text === 'Current session') { mode = 'session'; continue; }
-      if (text.includes('Weekly') || text === 'All models') { mode = 'weekly'; continue; }
-      if (mode && text.startsWith('Resets ')) {
-        if (mode === 'session') result.sessionResetsAt = text;
-        if (mode === 'weekly') result.weeklyResetsAt = text;
-        continue;
-      }
-      const m = text.match(/^(\d{1,3})%\s*used$/);
-      if (m && mode) { result[mode] = parseInt(m[1], 10); mode = null; }
+      // 2. 获取 usage
+      const usageRes = await fetch(`/api/organizations/${orgId}/usage`);
+      if (!usageRes.ok) return { _error: `usage API ${usageRes.status}`, _orgId: orgId };
+      const usage = await usageRes.json();
+      return { _raw: usage, _orgId: orgId };
+    } catch (e) {
+      return { _error: e.message };
     }
-    return result;
   });
 }
 
@@ -161,7 +150,12 @@ async function main() {
   console.log(`[${ts()}][${email}] ⏳ 启动延迟 ${Math.round(delay / 1000)}s...`);
   await new Promise(r => setTimeout(r, delay));
 
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({
+    headless: false,
+    args: [
+      '--disable-blink-features=AutomationControlled',
+    ],
+  });
 
   let contextOptions = {};
   if (fs.existsSync(cookieFile)) {
@@ -172,6 +166,13 @@ async function main() {
   }
 
   const context = await browser.newContext(contextOptions);
+  // 隐藏 Playwright 自动化特征，避免 CF 检测
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    // 删除 Playwright 注入的属性
+    delete window.__playwright;
+    delete window.__pw_manual;
+  });
   const page = await context.newPage();
 
   // 初始检测：是否需要登录
@@ -190,6 +191,22 @@ async function main() {
     await page.waitForTimeout(3000);
   }
   await page.waitForTimeout(2000);
+
+  // 等待 SPA 渲染完成
+  for (let i = 0; i < 5; i++) {
+    const hasContent = await page.evaluate(() =>
+      [...document.querySelectorAll('p')].some(p => p.innerText.includes('% used'))
+    );
+    if (hasContent) break;
+    await page.waitForTimeout(3000);
+  }
+
+  // DEBUG
+  const dbgTitle = await page.title();
+  const dbgPTags = await page.evaluate(() =>
+    [...document.querySelectorAll('p')].map(p => p.innerText.trim()).filter(t => t && t.length < 200)
+  );
+  console.log(`[${ts()}][${email}] [DEBUG] after CF: url=${page.url()}, title=${dbgTitle}, pTags=${JSON.stringify(dbgPTags.slice(0, 15))}`);
 
   if (page.url().includes('/login')) {
     // sessionKey 无效或未配置，回退邮件流程
@@ -211,30 +228,10 @@ async function main() {
     if (running) return;
     running = true;
     try {
-      let usage = await fetchUsage(page);
+      // DEBUG: 先用 API 探测看返回什么
+      const apiResult = await fetchUsageViaAPI(page);
+      console.log(`[${ts()}][${email}] [DEBUG API] ${JSON.stringify(apiResult)}`);
 
-      if (usage === null) {
-        // session 过期，优先尝试 sessionKey 重注入
-        console.log(`[${ts()}][${email}] 🔄 Session 过期，重新登录...`);
-        if (sessionKey) {
-          console.log(`[${ts()}][${email}] 🔑 重新注入 sessionKey...`);
-          await injectSessionKey(context, sessionKey);
-          usage = await fetchUsage(page);
-        }
-        if (usage === null) {
-          await doLogin(browser, page);
-          usage = await fetchUsage(page);
-        }
-        await context.storageState({ path: cookieFile });
-      }
-
-      if (usage === null) {
-        console.error(`[${ts()}][${email}] ❌ 登录后仍无法访问 usage 页`);
-        return;
-      }
-
-      writeData(usage.session, usage.weekly, usage.weeklyResetsAt, usage.sessionResetsAt);
-      console.log(`[${ts()}][${email}] ✅ session=${usage.session ?? '?'}% (${usage.sessionResetsAt ?? '?'}) weekly=${usage.weekly ?? '?'}% (${usage.weeklyResetsAt ?? '?'})`);
     } catch (e) {
       console.error(`[${ts()}][${email}] ❌ 检查失败：${e.message}`);
     } finally {
@@ -242,8 +239,8 @@ async function main() {
     }
   }
 
-  // 启动时立即跑一次
-  await runCheck();
+  // 启动时立即跑一次（页面已在 usage 页，跳过导航避免重新触发 CF）
+  await runCheck(true);
 
   // 定时检查
   setInterval(runCheck, CHECK_INTERVAL_MS);

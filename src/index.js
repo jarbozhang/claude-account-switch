@@ -3,7 +3,7 @@
 const readline = require('readline');
 const { openChrome } = require('./browser');
 const { getNextAccount, getAccountByEmail, markAccountUsed, getConfig } = require('./accounts');
-const { getCurrentEmail, checkUsage, logout, inputEmail, claudeCodeLogin, injectSessionKeyViaExtension } = require('./claude');
+const { getCurrentEmail, checkUsage, logout, inputEmail, injectSessionKeyViaExtension } = require('./claude');
 const { fetchVerifyLink } = require('./mail');
 
 const THRESHOLD = 50;
@@ -151,10 +151,7 @@ async function main() {
     // 4. 记录使用时间
     markAccountUsed(account.email);
 
-    // 5. 自动完成 Claude Code OAuth 登录
-    await claudeCodeLogin();
-
-    // 9. 完成
+    // 5. 完成
     console.log('');
     console.log('🎉 账号切换完成！');
     process.exit(0);

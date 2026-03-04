@@ -130,19 +130,22 @@ function barColor(pct) {
 
 function translateResetTime(s) {
   if (!s) return null;
-  // "Resets in 4 hr 3 min" 格式（session）
+  // 尝试解析为 ISO 时间，动态计算倒计时
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    const diff = Math.max(0, Math.floor((d.getTime() - Date.now()) / 1000));
+    const hr = Math.floor(diff / 3600);
+    const min = Math.floor((diff % 3600) / 60);
+    if (hr > 0) return \`\${hr}小时\${min}分钟后重置\`;
+    return \`\${min}分钟后重置\`;
+  }
+  // 兼容 "Resets in 4 hr 3 min" 格式
   const inMatch = s.match(/^Resets\\s+in\\s+(.+)$/i);
   if (inMatch) {
     const t = inMatch[1].replace(/(\\d+)\\s*hr/i, '$1小时').replace(/(\\d+)\\s*min/i, '$1分钟');
     return \`\${t}后重置\`;
   }
-  // "Resets Fri 11:00 AM" 格式（weekly）
-  const days = { Mon:'周一', Tue:'周二', Wed:'周三', Thu:'周四', Fri:'周五', Sat:'周六', Sun:'周日' };
-  return s.replace(/^Resets\\s+(\\w+)\\s+(\\d+:\\d+)\\s*(AM|PM)?/i, (_, day, time, ampm) => {
-    const d = days[day] || day;
-    const period = ampm ? (ampm.toUpperCase() === 'AM' ? '上午' : '下午') : '';
-    return \`下次重置：\${d} \${period}\${time}\`;
-  });
+  return s;
 }
 
 function relTime(ts) {
